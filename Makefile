@@ -1,6 +1,9 @@
 # Define the target architecture and build directory
 BUILD_DIR := build
 
+# Default target to build all binaries
+all: $(BUILD_DIR)/wol_http_linux_amd64
+
 # Ensure the build directory exists
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
