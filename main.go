@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -8,23 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-)
 
-// HTML template for the web interface
-var tpl = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Wake-on-LAN</title>
-</head>
-<body>
-    <h1>Wake-on-LAN</h1>
-    <form method="POST" action="/send-wol">
-        <button type="submit">Send Magic Packet</button>
-    </form>
-</body>
-</html>
-`
+	"github.com/mostlygeek/go-wol/internal"
+)
 
 var macAddress string
 
@@ -67,7 +54,7 @@ func SendMagicPacket(macAddr string) error {
 
 // homeHandler serves the home page with the button to send the WoL packet.
 func homeHandler(w http.ResponseWriter, r *http.Request) {
-	t, err := template.New("index").Parse(tpl)
+	t, err := template.New("index").Parse(internal.TEMPLATE)
 	if err != nil {
 		http.Error(w, "Error rendering template", http.StatusInternalServerError)
 		return
@@ -77,12 +64,37 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 
 // sendWolHandler handles the POST request to send the WoL packet.
 func sendWolHandler(w http.ResponseWriter, r *http.Request) {
-	err := SendMagicPacket(macAddress)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to send WoL packet: %v", err), http.StatusInternalServerError)
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+
+	var request struct {
+		Address string `json:"address"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request format"})
+		return
+	}
+
+	if request.Address == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "MAC address is required"})
+		return
+	}
+
+	err = SendMagicPacket(request.Address)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to send WoL packet: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Magic packet sent successfully!"})
 }
 
 func main() {
@@ -91,13 +103,8 @@ func main() {
 		port = "9080"
 	}
 
-	macAddress = os.Getenv("MAC")
-	if macAddress == "" {
-		log.Fatal("MAC address environment variable MAC is required but not set")
-	}
-
 	http.HandleFunc("/", homeHandler)
-	http.HandleFunc("/send-wol", sendWolHandler)
+	http.HandleFunc("/wakeup", sendWolHandler)
 
 	addr := fmt.Sprintf(":%s", port)
 	fmt.Printf("Server listening on %s\n", addr)
