@@ -1,3 +1,5 @@
+![image](https://github.com/user-attachments/assets/ec482b00-1151-4cd4-bca7-323f5f73f9bd)
+
 # About
 
 A simple golang web server that sends a WoL packet to a specific host on the network.
